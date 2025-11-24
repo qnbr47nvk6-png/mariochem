@@ -298,36 +298,114 @@
             }
         };
 
-        const useBackgroundMusic = (level, enabled, isCinematic) => {
-            const audioCtxRef = useRef(null); const intervalRef = useRef(null);
+        const useBackgroundMusic = (gameState, level, enabled) => {
+            const audioCtxRef = useRef(null); 
+            const intervalRef = useRef(null);
+            
             useEffect(() => {
-                if (!enabled) { if (intervalRef.current) clearInterval(intervalRef.current); return; }
-                const AudioContext = window.AudioContext || window.webkitAudioContext; if (!AudioContext) return; if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
-                const ctx = audioCtxRef.current;
-                const playNote = (freq, dur, type = 'sine', vol = 0.02) => { 
-                    if (ctx.state === 'suspended') ctx.resume(); 
-                    const osc = ctx.createOscillator(); const gain = ctx.createGain(); 
-                    osc.connect(gain); gain.connect(ctx.destination); 
-                    osc.type = type; osc.frequency.value = freq; 
-                    gain.gain.setValueAtTime(vol, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur); 
-                    osc.start(); osc.stop(ctx.currentTime + dur); 
+                // Cleanup function to stop previous loop immediately when component unmounts
+                return () => { 
+                    if (intervalRef.current) {
+                        clearInterval(intervalRef.current); 
+                        intervalRef.current = null;
+                    }
                 };
+            }, []);
+
+            useEffect(() => {
+                if (!enabled) { 
+                    if (intervalRef.current) clearInterval(intervalRef.current); 
+                    return; 
+                }
+
+                const AudioContext = window.AudioContext || window.webkitAudioContext; 
+                if (!AudioContext) return; 
+                if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+                const ctx = audioCtxRef.current;
+
+                if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+                const playNote = (freq, dur, type = 'sine', vol = 0.02) => { 
+                    const osc = ctx.createOscillator(); 
+                    const gain = ctx.createGain(); 
+                    osc.connect(gain); 
+                    gain.connect(ctx.destination); 
+                    osc.type = type; 
+                    osc.frequency.value = freq; 
+                    gain.gain.setValueAtTime(vol, ctx.currentTime); 
+                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur); 
+                    osc.start(); 
+                    osc.stop(ctx.currentTime + dur); 
+                };
+
+                // STOP previous music immediately
                 if (intervalRef.current) clearInterval(intervalRef.current);
-                let melody = [], speed = 500, type = 'sine';
-                if (isCinematic) { melody = [100, 120, 100, 150, 80]; speed = 300; type = 'sawtooth'; } 
-                else {
+
+                let melody = [];
+                let speed = 500;
+                let type = 'sine';
+                let vol = 0.02;
+
+                // --- SELECT MELODY BASED ON STATE & LEVEL ---
+                if (gameState === 'START') {
+                    // Title Screen: Upbeat, classic game feel
+                    melody = [330, 330, 330, 262, 330, 392, 196]; 
+                    speed = 200;
+                    type = 'square';
+                } else if (gameState === 'INTRO_CINEMATIC') {
+                    // Cinematic: Dramatic, building up
+                    melody = [100, 120, 100, 150, 80]; 
+                    speed = 300; 
+                    type = 'sawtooth';
+                } else if (gameState === 'END') {
+                    // Victory: Triumphant fanfare
+                    melody = [523, 659, 784, 1046, 784, 1046]; 
+                    speed = 400; 
+                    type = 'triangle';
+                } else {
+                    // PLAYING, QUESTION, TRANSITION
                     switch(level) {
-                        case 1: melody = [392, 523, 659, 784, 1046, 784, 659]; speed = 300; type = 'square'; break;
-                        case 2: melody = [220, 261, 329, 261, 220]; speed = 600; type = 'triangle'; break;
-                        case 3: melody = [440, 493, 523, 587, 523, 493]; speed = 400; type = 'sine'; break;
-                        case 4: melody = [196, 220, 246, 261, 220]; speed = 700; type = 'square'; break;
-                        case 5: melody = [110, 123, 130, 146, 164]; speed = 200; type = 'sawtooth'; break;
-                        default: melody = [440];
+                        case 1: // Level 1 (Lab): Cheerful, major scale
+                            melody = [262, 330, 392, 523, 392, 330]; 
+                            speed = 300; 
+                            type = 'sine'; 
+                            break;
+                        case 2: // Level 2 (Acid): Minor, mysterious, slower
+                            melody = [220, 196, 220, 247, 196]; 
+                            speed = 600; 
+                            type = 'triangle'; 
+                            break;
+                        case 3: // Level 3 (Heat): Fast, urgent
+                            melody = [440, 494, 554, 587, 554, 494]; 
+                            speed = 150; 
+                            type = 'square'; 
+                            break;
+                        case 4: // Level 4 (Ghost): Spooky, dissonant
+                            melody = [150, 160, 150, 140, 150, 200]; 
+                            speed = 700; 
+                            type = 'sine'; 
+                            break;
+                        case 5: // Level 5 (Boss): Intense, deep bass
+                            melody = [110, 82, 110, 123, 82, 110]; 
+                            speed = 200; 
+                            type = 'sawtooth'; 
+                            vol = 0.04;
+                            break;
+                        default: 
+                            melody = [440];
                     }
                 }
-                let idx = 0; intervalRef.current = setInterval(() => { playNote(melody[idx], speed/1000, type); idx = (idx + 1) % melody.length; }, speed);
-                return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-            }, [level, enabled, isCinematic]);
+
+                let idx = 0; 
+                intervalRef.current = setInterval(() => { 
+                    playNote(melody[idx], speed/1000, type, vol); 
+                    idx = (idx + 1) % melody.length; 
+                }, speed);
+
+                return () => { 
+                    if (intervalRef.current) clearInterval(intervalRef.current); 
+                };
+            }, [gameState, level, enabled]); // Dependency ensures music switches immediately on state/level change
         };
 
         // HELPER FUNCTION: DRAW PLAYER (Reusable)
@@ -363,7 +441,8 @@
             const [isPortrait, setIsPortrait] = useState(false);
             const [inputMethod, setInputMethod] = useState('TOUCH'); // 'TOUCH' | 'KEYBOARD'
 
-            useBackgroundMusic(level, soundEnabled, gameState === 'INTRO_CINEMATIC');
+            // Updated Audio Hook call
+            useBackgroundMusic(gameState, level, soundEnabled);
 
             useEffect(() => {
                 const handleResize = () => setIsPortrait(window.innerHeight > window.innerWidth);
